@@ -25,7 +25,7 @@ Official interactions.py paginator
 - Select labels are generated based on embed's title
 - Index button that can be turned on/off
 - Ability to set the buttons to any emote, color or label
-- Custom buttons
+- Custom components
 
 ### Join our [Discord server](https://discord.gg/UYCaSsMewk)
 
@@ -100,6 +100,9 @@ This is an individual page to be added to the paginator.
 - `?embeds: Embed | list[Embed]`: The embed(s) to be displayed on the page.
 - `?title: str`: The title of the page displayed in the select menu.
   - Defaults to content or the title of the embed with an available title.
+- `?components: ActionRow`: The custom components of the page.
+- `?callback: Callable[[Paginator, ComponentContext], Awaitable]`: The callback to run when any of the components are clicked.
+- `?position: RowPosition`: The position of the components.
 
 ### Example
 
@@ -172,7 +175,7 @@ Additional attributes:
 - `?component_ctx: ComponentContext`: The context of the paginator's components.
   - This is only available if or when a component is interacted with.
 - `index: int`: The current index of the paginator.
-  - This is the index of the current page.
+- `prev_index: int`: The previous index of the paginator.
 - `top: int`: The index of the top page.
 - `?message: Message`: The message that the paginator is using.
 - `_msg: dict[str, ?Snowflake | int]`: A dict with the `message_id` and `channel_id` of the message.
@@ -201,13 +204,21 @@ Additional attributes:
 
 ------------------------------
 
-## <a id="buttonkind"></a> *class* ButtonKind
+## <a id="buttonkind"></a> *enum* ButtonKind
 
 - `FIRST: "first"`: The first button.
 - `PREVIOUS: "prev"`: The previous button.
 - `INDEX: "index"`: The index button.
 - `NEXT: "next"`: The next button.
 - `LAST: "last"`: The last button.
+
+------------------------------
+
+## <a id="rowpos"></a> *enum* RowPosition
+
+- `TOP: "top"`
+- `MIDDLE: "mid"`
+- `BOTTOM: "low"`
 
 ------------------------------
 

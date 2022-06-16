@@ -2,7 +2,7 @@ from asyncio import TimeoutError
 from enum import Enum
 from inspect import iscoroutinefunction
 from random import randint
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Union
+from typing import Any, Awaitable, Callable, Coroutine, Dict, List, Optional, Union
 
 from interactions.ext.wait_for import setup, wait_for_component
 
@@ -42,6 +42,22 @@ class ButtonKind(str, Enum):
     INDEX = "index"
     NEXT = "next"
     LAST = "last"
+
+
+class RowPosition(str, Enum):
+    """
+    Enum for position of components.
+
+    Enums:
+
+    - `TOP: "top"`
+    - `MIDDLE: "mid"`
+    - `BOTTOM: "low"`
+    """
+
+    TOP = "top"
+    MIDDLE = "mid"
+    BOTTOM = "low"
 
 
 class DictSerializerMixin:
@@ -95,24 +111,37 @@ class Page(DictSerializerMixin):
     - `?embeds: Embed | list[Embed]`: The embeds of the page.
     - `?title: str`: The title of the page displayed in the select menu.
         - Defaults to content or the title of the embed with an available title.
+    - `?components: ActionRow`: The custom components of the page.
+    - `?callback: Callable[[Paginator, ComponentContext], Awaitable]`: The callback to run when any of the components are clicked.
+    - `?position: RowPosition`: The position of the components.
     """
 
-    __slots__ = ("_json", "content", "embeds", "title")
+    __slots__ = ("_json", "content", "embeds", "title", "components", "callback", "position")
+    _json: Dict[str, Any]
+    content: Optional[str]
+    embeds: Optional[Union[Embed, List[Embed]]]
+    title: Optional[str]
+    components: Optional[ActionRow]
+    callback: Optional[Callable[["Paginator", ComponentContext], Awaitable]]
+    position: RowPosition
 
     def __init__(
         self,
         content: Optional[str] = None,
         embeds: Optional[Union[Embed, List[Embed]]] = None,
         title: Optional[str] = None,
+        components: Optional[ActionRow] = None,
+        callback: Optional[Callable[["Paginator", ComponentContext], Awaitable]] = None,
+        position: RowPosition = RowPosition.TOP,
     ) -> None:
         if title:
-            self.title = title
+            _title = title
         elif content:
-            self.title = f"{content[:93]}..." if len(content) > 96 else content
+            _title = f"{content[:93]}..." if len(content) > 96 else content
         elif embeds and isinstance(embeds, Embed) and embeds.title:
-            self.title = f"{embeds.title[:93]}..." if len(embeds.title) > 96 else embeds.title
+            _title = f"{embeds.title[:93]}..." if len(embeds.title) > 96 else embeds.title
         elif embeds and isinstance(embeds, list) and embeds[0].title:
-            self.title = next(
+            _title = next(
                 (
                     f"{embed.title[:93]}..." if len(embed.title) > 96 else embed.title
                     for embed in embeds
@@ -121,15 +150,35 @@ class Page(DictSerializerMixin):
                 "No title",
             )
         else:
-            self.title = "No title"
+            _title = "No title"
 
         super().__init__(
             content=content,
             embeds=embeds,
+            title=_title,
+            components=components,
+            position=position,
+            callback=callback,
         )
 
+    @property
+    def data(self) -> Dict[str, Any]:
+        return {"content": self.content, "embeds": self.embeds}
+
+    async def run_callback(self, paginator: "Paginator", ctx: ComponentContext) -> None:
+        if not self.callback:
+            return
+        if not self.components:
+            return
+
+        custom_id = ctx.data.custom_id
+        if all(custom_id != c.custom_id for c in self.components.components):
+            return
+
+        return await self.callback(paginator, ctx)
+
     def __repr__(self) -> str:
-        return f"<Page content={self.content}, embeds={self.embeds}>"
+        return f"<Page title={self.title}>"
 
     __str__ = __repr__
 
@@ -156,12 +205,22 @@ class Paginator(DictSerializerMixin):
     - `?func_before_edit: Callable`: The function to run before editing the message.
     - `?func_after_edit: Callable`: The function to run after editing the message.
 
+    Attributes:
+
+    - `id: int`: The ID of the paginator.
+    - `index: int`: The index of the current page.
+    - `prev_index: int`: The index of the previous page.
+    - `top: int`: index of the top page.
+    - `?component_ctx: ComponentContext`: The context of the component.
+    - `?message: Message`: The message that is being paginated.
+
     Methods:
 
     - *async* `run() -> ?Data`: Runs the paginator in a loop until timed out.
     - *property* `custom_ids -> list[str]`: The custom IDs of the components.
     - *async* `component_logic()`: The logic for the components when clicked.
     - *async* `check(ctx: ComponentContext) -> bool`: Whether the paginator is for the user.
+    - *func* `page_row() -> ?ActionRow`: The custom components of the page.
     - *func* `select_row() -> ?ActionRow`: The select action row.
     - *func* `buttons_row() -> ?ActionRow`: The buttons action row.
     - *func* `components() -> list[?ActionRow]`: The components as action rows.
@@ -194,6 +253,7 @@ class Paginator(DictSerializerMixin):
         "id",
         "component_ctx",
         "index",
+        "prev_index",
         "top",
         "is_dict",
         "is_embeds",
@@ -219,6 +279,7 @@ class Paginator(DictSerializerMixin):
     id: int
     component_ctx: Optional[ComponentContext]
     index: int
+    prev_index: int
     top: int
     is_dict: bool
     is_embeds: bool
@@ -276,6 +337,7 @@ class Paginator(DictSerializerMixin):
         self.id: int = kwargs.get("id", randint(0, 999_999_999))
         self.component_ctx: Optional[ComponentContext] = kwargs.get("component_ctx")
         self.index: int = kwargs.get("index", 0)
+        self.prev_index: int = kwargs.get("prev_index", 0)
         self.top: int = kwargs.get("top", len(pages) - 1)
         self.message: Optional[Message] = kwargs.get("message")
         self._msg = {"message_id": None, "channel_id": self.ctx.channel_id}
@@ -290,7 +352,7 @@ class Paginator(DictSerializerMixin):
             try:
                 self.component_ctx: ComponentContext = await wait_for_component(
                     self.client,
-                    self.custom_ids,
+                    None,
                     self.message.id,
                     self.check,
                     self.timeout,
@@ -301,20 +363,21 @@ class Paginator(DictSerializerMixin):
             result: Optional[bool] = None
             if self.func_before_edit is not None:
                 try:
-                    result: Optional[bool] = await self.run_function()
+                    result: Optional[bool] = await self.run_function(self.func_before_edit)
                 except StopPaginator:
                     return self.data()
                 if result is False:
                     continue
             await self.component_logic()
             self.message = await self.edit()
+            self.prev_index = self.index
             if not self.message._client:
                 self.message._client = self.client._http
                 self.message.channel_id = self.ctx.channel_id
                 self.message.id = self._msg["message_id"]
             if self.func_after_edit is not None:
                 try:
-                    result: Optional[bool] = await self.run_function()
+                    result: Optional[bool] = await self.run_function(self.func_after_edit)
                 except StopPaginator:
                     return self.data()
                 if result is False:
@@ -345,6 +408,10 @@ class Paginator(DictSerializerMixin):
             self.index = min(self.index, self.top)
         elif custom_id == f"last{self.id}":
             self.index = self.top
+        else:
+            res = await self.pages[self.index].run_callback(self, self.component_ctx)
+            if res in range(len(self.pages)):
+                self.index = res
 
     async def check(self, ctx: ComponentContext) -> bool:
         boolean: bool = True
@@ -353,6 +420,9 @@ class Paginator(DictSerializerMixin):
         if not boolean:
             await ctx.send("This paginator is not for you!", ephemeral=True)
         return boolean
+
+    def page_row(self) -> Optional[ActionRow]:
+        return getattr(self.pages[self.index], "components", None)
 
     def select_row(self) -> Optional[ActionRow]:
         if not self.use_select or len(self.pages) > 25:
@@ -415,14 +485,27 @@ class Paginator(DictSerializerMixin):
         return ActionRow(components=list(filter(None, buttons)))
 
     def components(self) -> List[ActionRow]:
-        return list(filter(None, [self.select_row(), self.buttons_row()]))
+        rows = [self.select_row(), self.buttons_row()]
+        if row := self.page_row():
+            pos: RowPosition = self.pages[self.index].position
+            if pos == RowPosition.TOP:
+                rows.insert(0, row)
+            elif pos == RowPosition.MIDDLE:
+                rows.insert(1, row)
+            elif pos == RowPosition.BOTTOM:
+                rows.append(row)
+        return list(filter(None, rows))
 
     async def send(self) -> Message:
-        return await self.ctx.send(components=self.components(), **self.pages[self.index]._json)
+        return await self.ctx.send(components=self.components(), **self.pages[self.index].data)
 
     async def edit(self) -> Message:
+        if self.component_ctx.responded and self.prev_index != self.index:
+            return await self.message.edit(
+                components=self.components(), **self.pages[self.index].data
+            )
         return await self.component_ctx.edit(
-            components=self.components(), **self.pages[self.index]._json
+            components=self.components(), **self.pages[self.index].data
         )
 
     def disabled_components(self) -> List[ActionRow]:
