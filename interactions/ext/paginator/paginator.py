@@ -18,7 +18,6 @@ from interactions import (
     Message,
     SelectMenu,
     SelectOption,
-    Snowflake,
 )
 
 from .errors import PaginatorWontWork, StopPaginator
@@ -258,7 +257,6 @@ class Paginator(DictSerializerMixin):
         "is_dict",
         "is_embeds",
         "message",
-        "_msg",
     )
     _json: Dict[str, Any]
     client: Client
@@ -284,7 +282,6 @@ class Paginator(DictSerializerMixin):
     is_dict: bool
     is_embeds: bool
     message: Message
-    _msg: Dict[str, Optional[Snowflake]]
 
     def __init__(
         self,
@@ -340,14 +337,9 @@ class Paginator(DictSerializerMixin):
         self.prev_index: int = kwargs.get("prev_index", 0)
         self.top: int = kwargs.get("top", len(pages) - 1)
         self.message: Optional[Message] = kwargs.get("message")
-        self._msg = {"message_id": None, "channel_id": self.ctx.channel_id}
 
     async def run(self) -> Data:
         self.message = await self.send()
-        self._msg["message_id"] = self.message.id
-        if not self.message._client:
-            self.message._client = self.client._http
-            self.message.channel_id = self.ctx.channel_id
         while True:
             try:
                 self.component_ctx: ComponentContext = await wait_for_component(
@@ -371,10 +363,6 @@ class Paginator(DictSerializerMixin):
             await self.component_logic()
             self.message = await self.edit()
             self.prev_index = self.index
-            if not self.message._client:
-                self.message._client = self.client._http
-                self.message.channel_id = self.ctx.channel_id
-                self.message.id = self._msg["message_id"]
             if self.func_after_edit is not None:
                 try:
                     result: Optional[bool] = await self.run_function(self.func_after_edit)
@@ -504,9 +492,13 @@ class Paginator(DictSerializerMixin):
             return await self.message.edit(
                 components=self.components(), **self.pages[self.index].data
             )
-        return await self.component_ctx.edit(
+        msg = await self.component_ctx.edit(
             components=self.components(), **self.pages[self.index].data
         )
+        for attr in msg.__slots__:
+            if getattr(self.message, attr, None) and not getattr(msg, attr, None):
+                setattr(msg, attr, getattr(self.message, attr))
+        return msg
 
     def disabled_components(self) -> List[ActionRow]:
         components = self.components()
