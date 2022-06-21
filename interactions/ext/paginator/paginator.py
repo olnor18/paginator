@@ -498,6 +498,7 @@ class Paginator(DictSerializerMixin):
         for attr in msg.__slots__:
             if getattr(self.message, attr, None) and not getattr(msg, attr, None):
                 setattr(msg, attr, getattr(self.message, attr))
+                msg._json[attr] = self.message._json[attr]
         return msg
 
     def disabled_components(self) -> List[ActionRow]:
