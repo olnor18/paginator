@@ -1,6 +1,7 @@
 from asyncio import TimeoutError
 from enum import Enum
 from inspect import iscoroutinefunction
+from itertools import chain
 from random import randint
 from typing import Any, Awaitable, Callable, Coroutine, Dict, List, Optional, Union
 
@@ -19,8 +20,15 @@ from interactions import (
     SelectMenu,
     SelectOption,
 )
+from interactions.ext import Converter as _Converter
 
 from .errors import PaginatorWontWork, StopPaginator
+
+
+class Converter(_Converter):
+    @property
+    def difference(self) -> List[dict]:
+        return [{key: val} for key, val in self._obj2.items() if key not in self._obj1]
 
 
 class ButtonKind(str, Enum):
@@ -199,6 +207,7 @@ class Paginator(DictSerializerMixin):
     - `?extended_buttons: bool`: Whether to use extended buttons. Defaults to True.
     - `?buttons: dict[str, Button]`: The customized buttons to use. Defaults to None. Use `ButtonKind` as the key.
     - `?custom_buttons: Button | list[Button]`: The customized buttons to add. Defaults to None. Will not be added if it does not fit.
+    - `?custom_callback: Callable[[Paginator, ComponentContext], Awaitable]`: The callback to run when any of the custom components are clicked.
     - `?placeholder: str`: The placeholder to use for the select menu. Defaults to "Page".
     - `?disable_after_timeout: bool`: Whether to disable the components after timeout. Defaults to True.
     - `?remove_after_timeout: bool`: Whether to remove the components after timeout. Defaults to False.
@@ -246,6 +255,7 @@ class Paginator(DictSerializerMixin):
         "extended_buttons",
         "buttons",
         "custom_buttons",
+        "custom_callback",
         "placeholder",
         "disable_after_timeout",
         "remove_after_timeout",
@@ -272,6 +282,7 @@ class Paginator(DictSerializerMixin):
     extended_buttons: bool
     buttons: Optional[Dict[str, Button]]
     custom_buttons: Optional[Union[Button, List[Button]]]
+    custom_callback: Optional[Coroutine]
     placeholder: str
     disable_after_timeout: bool
     remove_after_timeout: bool
@@ -299,6 +310,7 @@ class Paginator(DictSerializerMixin):
         extended_buttons: bool = True,
         buttons: Optional[Dict[str, Button]] = None,
         custom_buttons: Optional[Union[Button, List[Button]]] = None,
+        custom_callback: Optional[Coroutine] = None,
         placeholder: str = "Page",
         disable_after_timeout: bool = True,
         remove_after_timeout: bool = False,
@@ -331,6 +343,7 @@ class Paginator(DictSerializerMixin):
             custom_buttons=[custom_buttons]
             if isinstance(custom_buttons, Button)
             else custom_buttons,
+            custom_callback=custom_callback,
             placeholder=placeholder,
             disable_after_timeout=disable_after_timeout,
             remove_after_timeout=remove_after_timeout,
@@ -404,9 +417,17 @@ class Paginator(DictSerializerMixin):
         elif custom_id == f"last{self.id}":
             self.index = self.top
         else:
-            res = await self.pages[self.index].run_callback(self, self.component_ctx)
+            res: Optional[int] = await self.pages[self.index].run_callback(self, self.component_ctx)
             if res in range(len(self.pages)):
                 self.index = res
+
+            if self.custom_callback and not res:
+                try:
+                    res: Optional[int] = await self.run_function(self.custom_callback)
+                except StopPaginator:
+                    return self.data()
+                if res in range(len(self.pages)):
+                    self.index = res
 
     async def check(self, ctx: ComponentContext) -> bool:
         boolean: bool = True
@@ -499,7 +520,10 @@ class Paginator(DictSerializerMixin):
         return await self.ctx.send(components=self.components(), **self.pages[self.index].data)
 
     async def edit(self) -> Message:
-        if self.component_ctx.responded and self.prev_index != self.index:
+        self.component_change()
+        if self.component_ctx.responded and (
+            self.prev_index != self.index or self.component_change()
+        ):
             return await self.message.edit(
                 components=self.components(), **self.pages[self.index].data
             )
@@ -537,6 +561,22 @@ class Paginator(DictSerializerMixin):
                 return await func(self, self.component_ctx)
             else:
                 return func(self, self.component_ctx)
+
+    def component_change(self) -> bool:
+        if not self.message:
+            return False
+        
+        current = self.message.components
+        new = []
+        for row in self.components():
+            new.extend(c._json for c in row.components)
+        current = list(chain.from_iterable(a["components"] for a in current))
+
+        for c1, c2 in zip(current, new):
+            converted = Converter(c1, c2)
+            if converted.difference:
+                return True
+        return False
 
     def data(self) -> Data:
         return Data(

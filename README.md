@@ -155,6 +155,7 @@ await p.run()
   - You can use the `ButtonKind` enum for this purpose.
 - `?custom_buttons: Button | list[Button]`: The customized buttons to add. Defaults to None.
   - Will not be added if it does not fit.
+- `?custom_callback: Callable[[Paginator, ComponentContext], Awaitable]`: The callback to run when any of the custom components are clicked.
 - `?placeholder: str = "Page"`: The placeholder to use for the select menu.
 - `?disable_after_timeout: bool = True`: Whether the components should be disabled after the timeout.
 - `?remove_after_timeout: bool = True`: Whether the components should be removed after the timeout.
