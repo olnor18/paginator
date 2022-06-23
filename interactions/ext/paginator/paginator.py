@@ -565,7 +565,7 @@ class Paginator(DictSerializerMixin):
     def component_change(self) -> bool:
         if not self.message:
             return False
-        
+
         current = self.message.components
         new = []
         for row in self.components():
