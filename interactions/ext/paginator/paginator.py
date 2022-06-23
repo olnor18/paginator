@@ -198,6 +198,7 @@ class Paginator(DictSerializerMixin):
     - `?use_index: bool`: Whether the paginator should use the index button. Defaults to False.
     - `?extended_buttons: bool`: Whether to use extended buttons. Defaults to True.
     - `?buttons: dict[str, Button]`: The customized buttons to use. Defaults to None. Use `ButtonKind` as the key.
+    - `?custom_buttons: Button | list[Button]`: The customized buttons to add. Defaults to None. Will not be added if it does not fit.
     - `?placeholder: str`: The placeholder to use for the select menu. Defaults to "Page".
     - `?disable_after_timeout: bool`: Whether to disable the components after timeout. Defaults to True.
     - `?remove_after_timeout: bool`: Whether to remove the components after timeout. Defaults to False.
@@ -244,6 +245,7 @@ class Paginator(DictSerializerMixin):
         "use_index",
         "extended_buttons",
         "buttons",
+        "custom_buttons",
         "placeholder",
         "disable_after_timeout",
         "remove_after_timeout",
@@ -269,6 +271,7 @@ class Paginator(DictSerializerMixin):
     use_index: bool
     extended_buttons: bool
     buttons: Optional[Dict[str, Button]]
+    custom_buttons: Optional[Union[Button, List[Button]]]
     placeholder: str
     disable_after_timeout: bool
     remove_after_timeout: bool
@@ -295,6 +298,7 @@ class Paginator(DictSerializerMixin):
         use_index: bool = False,
         extended_buttons: bool = True,
         buttons: Optional[Dict[str, Button]] = None,
+        custom_buttons: Optional[Union[Button, List[Button]]] = None,
         placeholder: str = "Page",
         disable_after_timeout: bool = True,
         remove_after_timeout: bool = False,
@@ -324,6 +328,9 @@ class Paginator(DictSerializerMixin):
             use_index=use_index,
             extended_buttons=extended_buttons,
             buttons={} if buttons is None else buttons,
+            custom_buttons=[custom_buttons]
+            if isinstance(custom_buttons, Button)
+            else custom_buttons,
             placeholder=placeholder,
             disable_after_timeout=disable_after_timeout,
             remove_after_timeout=remove_after_timeout,
@@ -469,6 +476,10 @@ class Paginator(DictSerializerMixin):
             if button.custom_id == self.custom_ids[3]:
                 button.label = f"{self.placeholder} {self.index + 1}/{self.top + 1}"
                 button._json.update({"label": button.label})
+
+        buttons = list(filter(None, buttons))
+        if self.custom_buttons and len(self.custom_buttons) + len(buttons) <= 5:
+            buttons.extend(self.custom_buttons)
 
         return ActionRow(components=list(filter(None, buttons)))
 

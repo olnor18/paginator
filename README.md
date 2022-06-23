@@ -153,6 +153,8 @@ await p.run()
 - `?buttons: dict[str, Button]`: Custom buttons to use.
   - The keys need to be one of the following: first, prev, index, next, last.
   - You can use the `ButtonKind` enum for this purpose.
+- `?custom_buttons: Button | list[Button]`: The customized buttons to add. Defaults to None.
+  - Will not be added if it does not fit.
 - `?placeholder: str = "Page"`: The placeholder to use for the select menu.
 - `?disable_after_timeout: bool = True`: Whether the components should be disabled after the timeout.
 - `?remove_after_timeout: bool = True`: Whether the components should be removed after the timeout.
