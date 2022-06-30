@@ -422,7 +422,7 @@ class Paginator(DictSerializerMixin):
 
     async def edit(self) -> Message:
         return await self.component_ctx.edit(
-            components=self.components(), **self.pages[self.index]._json, ephemeral=True
+            components=self.components(), **self.pages[self.index]._json
         )
 
     def disabled_components(self) -> List[ActionRow]:
