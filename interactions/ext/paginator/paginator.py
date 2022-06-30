@@ -382,14 +382,14 @@ class Paginator(DictSerializerMixin):
             self.buttons.get("first", Button(style=1, emoji=Emoji(name="⏮️")))
             if self.extended_buttons
             else None,
-            self.buttons.get("prev", Button(style=1, emoji=Emoji(name="<"))),
+            self.buttons.get("prev", Button(style=1, label="<")),
             self.buttons.get(
                 "index",
                 Button(style=1, label=f"{self.placeholder} {self.index + 1}/{self.top + 1}"),
             )
             if self.use_index
             else None,
-            self.buttons.get("next", Button(style=1, emoji=Emoji(name=">"))),
+            self.buttons.get("next", Button(style=1, label=">")),
             self.buttons.get("last", Button(style=1, emoji=Emoji(name="⏭️")))
             if self.extended_buttons
             else None,
